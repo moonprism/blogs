@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -14,9 +15,20 @@ import (
 	"strings"
 )
 
-type artInfo struct {
+type apiResponse struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data"`
+}
+
+type artInfoData struct {
 	Id    int    `json:"id"`
 	Title string `json:"title"`
+}
+
+type artInfoResponse struct {
+	apiResponse
+	Data        map[string][]artInfoData `json:"data"`
 }
 
 var initFlag = flag.Bool("i", false, "强制同步所有文章")
@@ -25,14 +37,14 @@ var articleId = flag.Int("a", 0, "指定更新某文章")
 func main() {
 	flag.Parse()
 
-
-	articlesBody, err := request("https://kicoe.com/api/articles")
+	content, err := request("https://kicoe.com/api/articles")
 	handleError(err)
 
-	articles := make(map[string][]artInfo)
-
-	err = json.Unmarshal(articlesBody, &articles)
+	var resp artInfoResponse
+	err = json.Unmarshal(content, &resp)
 	handleError(err)
+
+	articles := resp.Data
 
 	if *articleId != 0 {
 		for date, arts := range articles {
@@ -92,16 +104,27 @@ func syncArticle(artId int, fileName string) error {
 	articleBody, err := request(fmt.Sprintf("https://kicoe.com/api/article/%d", artId))
 	handleError(err)
 
+	var resp apiResponse
+	err = json.Unmarshal(articleBody, &resp)
+	handleError(err)
+
 	r, err := regexp.Compile(`([^\\]|^)!\[(.*?)\]\((.*?)\)`)
-	// TODO cdn备份博客图片
-	rep := []byte("${1}![${2}](https://kicoe-blog.oss-cn-shanghai.aliyuncs.com/${3})")
+
+	fs := r.FindSubmatch(articleBody)
+	
+	if (len(fs) > 3) {
+		fmt.Printf("%+v\n", string(r.FindSubmatch(articleBody)[3]))
+	}
+
+	rep := []byte("${1}![${2}](https://raw.githubusercontent.com/moonprism/blogs/master/image/${3})")
 	articleBody = r.ReplaceAll(articleBody, rep)
+
 
 	file, err := os.OpenFile(fileName, os.O_TRUNC|os.O_RDWR|os.O_CREATE, os.ModePerm)
 	handleError(err)
 	defer file.Close()
 
-	_, err = file.Write(articleBody)
+	_, err = file.Write([]byte(resp.Data.(string)))
 	return err
 }
 
@@ -124,4 +147,21 @@ func exists(path string) bool {
 		return false
 	}
 	return true
+}
+
+func syncImage(url string) {
+	resp, err := http.Get(url)
+	handleError(err)
+	defer resp.Body.Close()
+
+	path := "image/"
+	s := strings.Split(url, "/")
+	fileName := s[len(s)-1]
+
+	out, err := os.OpenFile(path+fileName, os.O_TRUNC|os.O_RDWR|os.O_CREATE, os.ModePerm)
+	handleError(err)
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	handleError(err)
 }
