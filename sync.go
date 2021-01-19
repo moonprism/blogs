@@ -110,15 +110,15 @@ func syncArticle(artId int, fileName string) error {
 
 	r, err := regexp.Compile(`([^\\]|^)!\[(.*?)\]\((.*?)\)`)
 
-	fs := r.FindSubmatch(articleBody)
-	
-	if (len(fs) > 3) {
-		fmt.Printf("%+v\n", string(r.FindSubmatch(articleBody)[3]))
+	fs := r.FindAllSubmatch(articleBody, -1)
+
+	for i, _ := range fs {
+		url := fmt.Sprintf("https://kicoe-blog.oss-cn-shanghai.aliyuncs.com/%s", string(fs[i][3]))
+		syncImage(url)
 	}
 
 	rep := []byte("${1}![${2}](https://raw.githubusercontent.com/moonprism/blogs/master/image/${3})")
 	articleBody = r.ReplaceAll(articleBody, rep)
-
 
 	file, err := os.OpenFile(fileName, os.O_TRUNC|os.O_RDWR|os.O_CREATE, os.ModePerm)
 	handleError(err)
@@ -150,7 +150,14 @@ func exists(path string) bool {
 }
 
 func syncImage(url string) {
-	resp, err := http.Get(url)
+	client := &http.Client{}
+
+	req, err := http.NewRequest("GET", url, nil)
+	handleError(err)
+
+	req.Header.Set("Referer", "https://kicoe.com/")
+
+	resp, err := client.Do(req)
 	handleError(err)
 	defer resp.Body.Close()
 
