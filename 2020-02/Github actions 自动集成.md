@@ -66,7 +66,7 @@ jobs:
       - name: Build
         run: make build # 运行Makefile里的编译任务出可执行文件
       - name: Docker Publish
-        uses: elgohr/Publish-Docker-Github-Action@master
+        uses: elgohr/Publish-Docker-Github-Action@v5
         with:
           name: kicoe/test
           username: kicoe
